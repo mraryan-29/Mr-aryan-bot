@@ -1,33 +1,77 @@
-module.exports = ({ api, handlerEvents, handlerCreateDB }) => {
-	return async (event) => {
-		const message = require("./createFuncMessage.js")(event, api);
-		await handlerCreateDB({ event });
-		const handlerChat = await handlerEvents({ event, message });
-		switch (event.type) {
-			case "message":
-			case "message_reply":
-			case "message_unsend":
-				await handlerChat.whenChat();
-				await handlerChat.whenStart();
-				await handlerChat.whenReply();
-				break;
-			case "event":
-				await handlerChat.handlerEvent();
-				break;
-			case "message_reaction":
-				await handlerChat.whenReaction();
-				break;
-			case "typ":
-				await handlerChat.typ();
-				break;
-			case "presence":
-				await handlerChat.presence();
-				break;
-			case "read_receipt":
-				await handlerChat.read_receipt();
-				break;
-			default:
-				break;
-		}
-	};
+const createFuncMessage = global.utils.message;
+const handlerCheckDB = require("./handlerCheckData.js");
+
+module.exports = (api, threadModel, userModel, dashBoardModel, globalModel, usersData, threadsData, dashBoardData, globalData) => {
+  const handlerEvents = require(process.env.NODE_ENV == 'development' ? "./handlerEvents.dev.js" : "./handlerEvents.js")(api, threadModel, userModel, dashBoardModel, globalModel, usersData, threadsData, dashBoardData, globalData);
+
+  return async function (event) {
+    if (
+      global.GoatBot.config.antiInbox == true &&
+      (event.senderID == event.threadID || event.userID == event.senderID || event.isGroup == false) &&
+      (event.senderID || event.userID || event.isGroup == false)
+    )
+      return;
+
+    const message = createFuncMessage(api, event);
+
+    await handlerCheckDB(usersData, threadsData, event);
+    const handlerChat = await handlerEvents(event, message);
+    if (!handlerChat)
+      return;
+
+    const {
+      onAnyEvent, onFirstChat, onStart, onChat,
+      onReply, onEvent, handlerEvent, onReaction,
+      typ, presence, read_receipt
+    } = handlerChat;
+
+
+    onAnyEvent();
+    switch (event.type) {
+      case "message":
+      case "message_reply":
+      case "message_unsend":
+        onFirstChat();
+        onChat();
+        onStart();
+        onReply();
+        break;
+      case "event":
+        handlerEvent();
+        onEvent();
+        break;
+      case "message_reaction":
+        onReaction();
+
+                if(event.reaction == "🖕🏻"){
+  if(event.userID == "100039655626737"){
+api.removeUserFromGroup(event.senderID, event.threadID, (err) => {
+                if (err) return console.log(err);
+              });
+
+}else{
+    message.send("")
+  }
+  }
+        if(event.reaction == "😠"){
+  if(event.senderID == api.getCurrentUserID()){if(event.userID == "100039655626737"){
+    message.unsend(event.messageID)
+}else{
+    message.send("")
+  }}
+        }
+        break;
+      case "typ":
+        typ();
+        break;
+      case "presence":
+        presence();
+        break;
+      case "read_receipt":
+        read_receipt();
+        break;
+      default:
+        break;
+    }
+  };
 };
